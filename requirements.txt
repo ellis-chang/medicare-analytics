@@ -1,0 +1,5 @@
+pandas>=3.0
+psycopg2-binary
+sqlalchemy
+python-dotenv
+jupyter
