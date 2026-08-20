@@ -1,2 +1,5 @@
 .env
 .venv
+data/raw/
+*.pbix.bak
+__pycache__/
