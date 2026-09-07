@@ -74,7 +74,8 @@ hospital level instead, on coverage.
 Aggregating the service-level file to hospital level recovers **71.81%** of the
 discharges reported in the provider-level file for 2022. Per-hospital coverage:
 median 60.3%, range 5.4% to 100.0%. **No hospital exceeds 100%**, confirming
-suppression as the mechanism and ruling out a grain misunderstanding.
+suppression as the mechanism and ruling out a grain misunderstanding. The two 
+2022 hospitals with suppressed payment totals are excluded from this comparison.
 
 Payment impact is small. The service-level national average runs 1.3% below the
 provider-level figure ($17,772.24 against $18,004.54, ratio 0.987). Suppressed
@@ -121,6 +122,27 @@ No nulls in any payment or discharge column, in any year.
 
 ---
 
+## Provider-level payment nulls
+
+Two hospitals in the 2022 provider-level file have null payment totals:
+CCN 010110 (Bullock County Hospital, AL) and CCN 050796 (West Coast Surgery
+Inc, CA). Both report exactly 11 discharges, the CMS suppression threshold, so
+payment amounts were withheld while the discharge count was published. No nulls
+in 2023 or 2024.
+
+**Decision: retained as null, not imputed.** Zero would be wrong; the payments
+exist but were not published. `tot_pymt_amt` and `tot_mdcr_pymt_amt` are
+therefore nullable in the staging schema. Affects 2 of 9,257 rows and excludes
+both hospitals from the Section 7 coverage comparison.
+
+This surfaced as a load failure rather than in profiling, because the original
+Section 4 null check covered the service-level file only. NOT NULL constraints
+on the provider-level, HGI, and HRRP tables were written against untested
+assumptions. The constraint caught it, which is what constraints are for, but
+the profiling notebook has since been extended to cover all four sources.
+
+---
+
 ## HRRP sentinel values
 
 Two suppression markers, handled differently by pandas:
@@ -133,6 +155,28 @@ Two suppression markers, handled differently by pandas:
 Both mean CMS declined to publish. Neither is zero; null is the honest
 representation. Coerced with `pd.to_numeric(errors="coerce")` so the treatment is
 explicit rather than incidental.
+
+### Suppression is not uniform across columns
+
+Of 18,330 rows, 11,720 carry a usable excess readmission ratio, but only 8,037
+of those also carry a published discharge count. A further 3,683 have a ratio
+with the denominator suppressed, and 205 have a denominator with the ratio
+suppressed.
+
+|  | ratio present | ratio null |
+|---|---|---|
+| **discharges present** | 8,037 | 205 |
+| **discharges null** | 3,683 | 6,405 |
+
+Volume-weighted quality analysis is therefore possible for 69% of usable ratios.
+The ratio, predicted rate, expected rate, and readmission count columns suppress
+together (6,610 nulls each), so measure-block suppression is consistent even
+though the denominator is handled separately.
+
+> TODO - Stage 8: decide whether the cost-quality scatter is unweighted across
+> all 11,720 ratios, restricted to the 8,037 with a denominator, or weighted
+> using total discharges from the claims data as a volume proxy. Check first
+> whether the 3,683 denominator-suppressed hospitals are systematically smaller.
 
 ---
 
@@ -208,3 +252,44 @@ explicitly rather than dropping those hospitals silently.
 
 **`Hospital Ownership` is the primary segmentation attribute** - ten categories
 with usable distribution.
+
+---
+
+## Staging load
+
+**No text-staging layer.** The original plan was to load every column as text
+and cast in SQL, the standard defence against currency-formatted source data.
+Profiling made that unnecessary: the payment columns arrive as clean floats with
+no `$` or thousands separators, and the claims files carry no sentinel values.
+Data loads directly into typed columns, with coercion applied in pandas only
+where sentinels exist (HGI star rating, four HRRP measure columns).
+
+**`pandas.to_sql` over `COPY`.** Profiling timed the three service-level files
+at roughly 36 MB each and 0.3 seconds to read. At that scale `to_sql` with
+`chunksize=10000, method="multi"` loads 438,048 rows in about 87 seconds, which
+is acceptable for an annually-refreshed source. `copy_expert` would be faster but
+adds complexity the data volume does not justify.
+
+**Idempotent by TRUNCATE, not `if_exists="replace"`.** Each loader truncates its
+target before inserting with `if_exists="append"`. Using `replace` would drop the
+table and let pandas recreate it with inferred types, discarding the primary
+keys, check constraint, and `numeric(14,6)` precision defined in `01_schema.sql`.
+
+**One table per source, not per year.** All three years land in a single table
+with a `data_year` column added at load. Three near-identical tables would force
+a UNION into every downstream query.
+
+**Column subsetting.** The provider-level file has 57 columns and 5 are loaded;
+HGI has 38 and 9 are loaded. Explicit rename dictionaries in
+`src/load_postgres.py` document what was kept. Any column not in the mapping is
+dropped at select time, so a schema change in a future CMS release fails visibly
+rather than silently inserting into the wrong column.
+
+**Payment precision.** Service-level payment columns use `numeric(14,6)`,
+preserving the six decimal places in the source. These are per-discharge averages
+that get multiplied back by discharge counts to recover weighted totals, so
+rounding to cents before multiplying introduces drift that compounds across
+438,048 rows. Provider-level columns use `numeric(16,2)` because those are
+already summed dollar totals.
+
+All nine checks in `sql/02_quality_checks.sql` pass against the loaded data.

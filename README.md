@@ -156,7 +156,7 @@ zero-padded and must be read as strings, or every join silently breaks.
       (CCN, DRG). Suppression threshold confirmed at 11 discharges. Service-level
       aggregation reconciled against provider-level totals. Cleaning decisions
       documented.
-- [ ] **Stage 2. Database.** Staging tables, typed load, quality checks.
+- [x] **Stage 2. Database.** Staging tables, typed load, quality checks.
 - [ ] **Stage 3. Dimensional model.** Star schema: `dim_hospital`, `dim_drg`,
       `dim_year`, `fact_hospital_drg`, `fact_hospital_quality`.
 - [ ] **Stage 4. Benchmarks.** National per-DRG per-year payment benchmark.
