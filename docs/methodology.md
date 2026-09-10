@@ -270,6 +270,10 @@ are preferentially removed.
 **Acute care hospitals only.** The IPPS inpatient file excludes critical access,
 psychiatric, and other facility types. Findings do not generalise to them.
 
+**Correlation** is r = 0.023. Cost position and readmission performance are effectively 
+unrelated across 2,708 hospitals. This measures association, not causation, and 
+readmission is one outcome among many, but on this measure, higher spending buys nothing.
+
 ---
 
 ## Reproducibility

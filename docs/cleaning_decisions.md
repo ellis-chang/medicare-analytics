@@ -185,10 +185,9 @@ The ratio, predicted rate, expected rate, and readmission count columns suppress
 together (6,610 nulls each), so measure-block suppression is consistent even
 though the denominator is handled separately.
 
-> TODO - Stage 8: decide whether the cost-quality scatter is unweighted across
-> all 11,720 ratios, restricted to the 8,037 with a denominator, or weighted
-> using total discharges from the claims data as a volume proxy. Check first
-> whether the 3,683 denominator-suppressed hospitals are systematically smaller.
+The scatter is unweighted across all usable ratios. Bubble size shows discharge 
+volume from the claims data as a visual proxy, but the correlation is computed 
+unweighted since the HRRP denominator is suppressed for 31% of usable ratios.
 
 ---
 
