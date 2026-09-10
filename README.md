@@ -32,18 +32,26 @@ than patient population.
 From profiling 438,048 hospital-DRG records covering roughly 3,000 hospitals and
 14.9 million discharges across data years 2022 to 2024:
 
-**Payment varies roughly 1.75x within a single DRG.** Holding the clinical
-condition completely constant, the 90th-percentile hospital receives about 1.75
-times the 10th-percentile hospital. The ratio is consistent across the five
-highest-volume DRGs (sepsis, heart failure, respiratory infection, pneumonia),
-ranging only from 1.67x to 1.77x. Case mix cannot explain variation measured
-inside a DRG.
+**Case mix explains roughly half the variation in hospital payment.** Raw
+payment per discharge spans a p90/p10 ratio of 2.34x across hospitals in 2024
+($10,262 to $24,040). After adjusting each hospital for its own DRG mix, the
+ratio falls to 1.68x. National O/E validates to exactly 1.0 by construction.
 
-**28% of Medicare inpatient discharges are invisible in the public
-service-level file.** Aggregating to hospital level recovers 71.8% of the
-discharges reported in the provider-level file. The rest sit in cells suppressed
-below the 11-discharge threshold. Payment impact is small: the visible subset
-runs 1.3% cheaper, because suppressed cells skew toward rare, expensive cases.
+**The typical hospital costs less than its case mix predicts.** Median O/E is
+0.890 against a national aggregate of 1.0, so the distribution is right-skewed
+and a minority of high-cost hospitals accounts for the balance.
+
+**Ownership predicts residual cost.** Median O/E runs from 1.139 at state
+government hospitals down to 0.848 at proprietary and 0.754 at physician-owned.
+The nine highest-O/E hospitals are all major public safety-net systems, which is
+where DSH and uncompensated care payments concentrate. Descriptive rather than
+causal: DRG-level adjustment does not capture within-DRG severity.
+
+**28% of Medicare inpatient discharges are invisible in the public service-level file.** 
+Aggregating to hospital level recovers 71.8% of the discharges reported in the 
+provider-level file. The rest sit in cells suppressed below the 11-discharge threshold. 
+Payment impact is small: the visible subset runs 1.3% cheaper, because suppressed cells 
+skew toward rare, expensive cases.
 
 **Estimate reliability degrades sharply at low coverage.** Payment ratio standard
 deviation runs 0.371 for hospitals below 25% coverage against 0.034 above 75%.
@@ -157,9 +165,9 @@ zero-padded and must be read as strings, or every join silently breaks.
       aggregation reconciled against provider-level totals. Cleaning decisions
       documented.
 - [x] **Stage 2. Database.** Staging tables, typed load, quality checks.
-- [ ] **Stage 3. Dimensional model.** Star schema: `dim_hospital`, `dim_drg`,
+- [x] **Stage 3. Dimensional model.** Star schema: `dim_hospital`, `dim_drg`,
       `dim_year`, `fact_hospital_drg`, `fact_hospital_quality`.
-- [ ] **Stage 4. Benchmarks.** National per-DRG per-year payment benchmark.
+- [x] **Stage 4. Benchmarks.** National per-DRG per-year payment benchmark.
 - [ ] **Stage 5. Power BI model.** Import, relationships, formatting.
 - [ ] **Stage 6. DAX measures.** Weighted averages, expected payment, O/E.
 - [ ] **Stage 7. Dashboard pages 1 to 3.** Executive summary, variation explorer,

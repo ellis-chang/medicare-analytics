@@ -74,14 +74,15 @@ hospital level instead, on coverage.
 Aggregating the service-level file to hospital level recovers **71.81%** of the
 discharges reported in the provider-level file for 2022. Per-hospital coverage:
 median 60.3%, range 5.4% to 100.0%. **No hospital exceeds 100%**, confirming
-suppression as the mechanism and ruling out a grain misunderstanding. The two 
-2022 hospitals with suppressed payment totals are excluded from this comparison.
+suppression as the mechanism and ruling out a grain misunderstanding.
 
 Payment impact is small. The service-level national average runs 1.3% below the
-provider-level figure ($17,772.24 against $18,004.54, ratio 0.987). Suppressed
-cells skew expensive, since rare complex cases are exactly the ones with few
-discharges at any single hospital, so the visible subset is slightly cheaper than
-reality.
+provider-level figure ($17,772.24 against $18,004.54, ratio 0.987). The two 2022
+hospitals with suppressed payment totals drop out of the payment comparison but
+remain in the discharge coverage figure above, which does not depend on payment.
+Suppressed cells skew expensive, since rare complex cases are exactly the ones 
+with few discharges at any single hospital, so the visible subset is slightly 
+cheaper than reality.
 
 **Low-coverage hospitals produce unreliable estimates.** Payment ratio dispersion
 by coverage band:
@@ -96,11 +97,21 @@ by coverage band:
 Correlation between coverage and payment ratio: −0.365.
 
 **Decision: hospitals below 25% coverage are excluded** - 157 hospitals, roughly
-5% of the sample. Below that threshold a hospital's measured average payment
-reflects whichever handful of DRGs cleared suppression rather than its actual
-cost profile, and dispersion is an order of magnitude wider than in the top band.
-The cut is set at the point where the standard deviation drops from 0.371 to
-0.128 rather than at a round number.
+5% of the sample. The band table above shows 158 because its upper edge is
+inclusive of exactly 25%; the exclusion filter is strictly less than. Below that 
+threshold a hospital's measured average payment reflects whichever handful of DRGs 
+cleared suppression rather than its actual cost profile, and dispersion is an order 
+of magnitude wider than in the top band. The cut is set at the point where the 
+standard deviation drops from 0.371 to 0.128 rather than at a round number.
+
+Measured against the finished benchmark, the filter turns out to be weaker than
+this reasoning suggests. Excluding the 172 hospitals below 25% coverage in 2024
+moves the O/E percentiles by less than 0.01 (p10 0.736 to 0.737, median 0.890 to
+0.889, p90 1.236 to 1.227), and it does not remove the extreme values either:
+the highest-O/E hospital in 2024 sits at 26.5% coverage, just above the cut. The
+rule is retained because individually unreliable hospital-level estimates should
+not appear in a table someone might act on, not because it corrects the national
+picture. The count varies by year: 157 in 2022, 171 in 2023, 172 in 2024.
 
 ---
 
@@ -114,8 +125,8 @@ Medical Center (CCN 010001) is coded 1.0 in 2022 and 2.0 in 2023.
 
 **Decision: `dim_hospital` uses the 2024 RUCA value as a static attribute.** The
 2024 file has complete coverage, and treating RUCA as year-varying would require
-either a type-2 slowly-changing dimension or moving it onto the fact table —
-complexity that a rural/urban flag does not justify. Reclassification between
+either a type-2 slowly-changing dimension or moving it onto the fact table. That
+is complexity that a rural/urban flag does not justify. Reclassification between
 years is recorded as a limitation.
 
 No nulls in any payment or discharge column, in any year.
@@ -133,7 +144,8 @@ in 2023 or 2024.
 **Decision: retained as null, not imputed.** Zero would be wrong; the payments
 exist but were not published. `tot_pymt_amt` and `tot_mdcr_pymt_amt` are
 therefore nullable in the staging schema. Affects 2 of 9,257 rows and excludes
-both hospitals from the Section 7 coverage comparison.
+both hospitals from the Section 7 payment comparison. Their discharge counts are
+published, so they remain in the coverage figure.
 
 This surfaced as a load failure rather than in profiling, because the original
 Section 4 null check covered the service-level file only. NOT NULL constraints
@@ -243,12 +255,13 @@ Both figures are labelled on the dashboard so the distinction is visible.
 ## HGI attributes
 
 **`Hospital Type` is excluded from `dim_hospital`** - single-valued across all
-2,867 matched hospitals (Acute Care Hospitals). Recorded instead as a scope
-statement: the IPPS inpatient file contains only acute care facilities.
+2,867 hospitals matching the 2024 claims file (Acute Care Hospitals).
 
-**`Hospital overall rating` carries a "Not Available" sentinel** for 226
-hospitals (7.9%), coerced to null. Star-rating filters must handle nulls
-explicitly rather than dropping those hospitals silently.
+**`Hospital overall rating` carries a "Not Available" sentinel** for 226 of the
+2,867 hospitals matching the 2024 claims file (7.9%), coerced to null. In
+`dim_hospital`, which spans all three years, the null count is higher because
+the 134 hospitals with no HGI match also carry a null rating. Star-rating filters 
+must handle nulls explicitly rather than dropping those hospitals silently.
 
 **`Hospital Ownership` is the primary segmentation attribute** - ten categories
 with usable distribution.
@@ -293,3 +306,61 @@ rounding to cents before multiplying introduces drift that compounds across
 already summed dollar totals.
 
 All nine checks in `sql/02_quality_checks.sql` pass against the loaded data.
+
+---
+
+## Dimensional model
+
+**dim_hospital holds 3,063 hospitals**, the union of CCNs across all three
+claims years. Higher than any single year (3,015 / 2,945 / 2,906) because a
+hospital present in 2022 and gone by 2024 still has fact rows that must resolve.
+
+**Hospital attributes come from the most recent year in which the hospital
+appears.** Names and addresses change between releases; the latest value is the
+most useful to display.
+
+**RUCA comes from 2024 only.** The 157 hospitals absent from the 2024 file
+(3,063 total less the 2,906 present in 2024) carry NULL rather than a stale
+earlier value. Unrelated to the 157 low-coverage exclusions above, which happen
+to be the same count.
+
+**134 hospitals have no Hospital General Information match** and carry NULL
+ownership, county, emergency services, and star rating. These are
+systematically small: mean 526 discharges against 5,070 for matched hospitals,
+median 121 against 2,637. Any analysis segmented by ownership or star rating
+therefore describes mid-size and large hospitals. Recorded as a limitation.
+
+**648 HRRP rows excluded**, covering 108 hospitals present in HRRP but absent
+from the service-level claims file. A hospital with no cost data contributes
+nothing to a cost-quality comparison. Separately, 116 of the 3,063 hospitals in
+`dim_hospital` have no HRRP rows at all: the two sets differ because exclusion
+is measured in rows and absence in hospitals.
+
+**dim_drg holds 588 codes**, the union across all three years. 488 appear in
+every year and are flagged `in_all_years` for DRG-level trend visuals.
+
+---
+
+## Benchmark
+
+**Coverage exceeds 100% for one hospital-year.** Turning Point Hospital
+(CCN 110209, GA) reports 540 service-level discharges against 539 at provider
+level in 2024, across three DRGs. One discharge on a behavioral health facility;
+a CMS reporting inconsistency rather than a grain error, given that referential
+integrity and the anchor values both hold. Retained and documented; check 7 in
+`07_benchmark_checks.sql` expects exactly this one row.
+
+**Benchmarks are tables, not materialized views.** Power BI's PostgreSQL
+connector does not surface materialized views in its Navigator, so both were
+built as tables. Nothing is lost: they are derived entirely from the analytics
+and staging tables, so rerunning `06_benchmarks.sql` rebuilds them, and tables
+can carry the primary and foreign keys a materialized view cannot.
+
+**`drg_year_key`** is a generated column on `fact_hospital_drg` and a stored
+column on `drg_benchmark`. Power BI relationships join on a single column while
+the benchmark's grain is (drg_cd, data_year).
+
+**`fact_hospital_year` exists to hold coverage.** The 25% exclusion rule needs
+service-level discharges over provider-level discharges, and `fact_hospital_drg`
+cannot express that because the denominator lives in the provider-level file.
+Hospital-year grain, 8,866 rows, related to `dim_hospital` and `dim_year`.

@@ -54,6 +54,35 @@ range from 76.0% down to 28.7%, and only 21.2% of hospitals carry all six. A
 composite across all six would sacrifice four fifths of the sample to gain four
 conditions.
 
+All six measures are loaded into `fact_hospital_quality`. Filtering to these two
+happens in the dashboard rather than the model, so the choice stays visible and
+reversible.
+
+### Medical vs surgical classification
+
+`is_surgical` is derived by case-insensitive keyword matching on the DRG
+description, using: PROCEDURE, SURGERY, SURGICAL, REPLACEMENT, IMPLANT,
+TRANSPLANT, BYPASS, RESECTION, CRANIOTOMY, AMPUTATION, REVISION, FUSION, GRAFT,
+EXCISION, REATTACHMENT, DEBRIDEMENT.
+
+This is an approximation. The authoritative method maps each MS-DRG to its
+Major Diagnostic Category and uses the published medical/surgical split, which
+requires a reference table not included in the four source files.
+
+Spot-checking the finished dimension confirms the approximation's failure
+mode. DRG 003 (ECMO or tracheostomy with mechanical ventilation) and DRG 011
+(tracheostomy for face, mouth, and neck diagnoses) are classified medical,
+because no keyword matches "tracheostomy" or "ECMO". These are low-volume,
+high-cost codes, so the aggregate split is barely affected, but individual
+misclassifications exist and the flag should not be treated as authoritative
+at DRG level.
+
+The result is plausible: 283 of 588 codes (48.1%) are flagged surgical. Within
+2024, medical DRGs carry 78.4% of discharges on 54.6% of codes, while surgical
+DRGs carry 21.8% on 46.3%. A hospital's surgical share therefore moves its raw
+cost position far more than its share of codes suggests, which is the asymmetry
+case-mix adjustment corrects for.
+
 ---
 
 ## Weighted averages
@@ -109,10 +138,37 @@ A precomputed SQL column is frozen and would return wrong answers under filterin
 
 ### Validation
 
-The discharge-weighted national average of O/E across all hospitals must equal
-1.0 to within rounding. If it does not, the weighting is wrong.
+National O/E is exactly 1.0 by construction, computed as the ratio of aggregate
+totals: total observed payment over total expected. The expected total is the sum
+over DRGs of (national benchmark x national discharges), which restates the
+national payment total. Verified to 19 decimal places in all three years.
 
-> Record the validated figure here once the DAX measure is built (Stage 6).
+The discharge-weighted mean of individual hospital O/E ratios is 0.978, not 1.0,
+and the gap is informative rather than an error. A weighted mean of ratios is not
+the ratio of weighted sums; national O/E is implicitly weighted by expected
+dollars while the mean is weighted by discharges. That it lands below 1.0 means
+hospitals with high expected payment per discharge run above expected,
+consistent with IME, DSH, and outlier add-ons concentrating at large complex
+facilities.
+
+The Stage 6 DAX measures must reproduce both figures. Confirmed in Power BI: 
+the `DAX O/E Ratio` measure returns exactly 1.00 nationally, and `Avg Payment per Discharge` 
+reproduces all three annual anchors.
+
+### How much variation does case mix explain?
+
+Hospital-level payment per discharge in 2024 spans a p90/p10 ratio of 2.34x
+($10,262 to $24,040). After case-mix adjustment the O/E ratio spans 1.68x (0.736
+to 1.236). Roughly half of raw variation is explained by which patients a
+hospital treats; the remainder is not.
+
+The adjusted figure is consistent with the within-DRG spread measured during
+profiling (1.67x to 1.77x across the five highest-volume DRGs). Holding DRG
+constant and adjusting for DRG mix arrive at the same answer by different routes.
+
+Median O/E is 0.890 against a national aggregate of exactly 1.0. The typical
+hospital costs 11% less than its case mix predicts, and the distribution is
+right-skewed, so a minority of high-cost hospitals accounts for the balance.
 
 ---
 
@@ -137,10 +193,40 @@ Teaching status is **not available** in the current source set. HGI carries no
 residency or GME indicator, and `Hospital Type` is single-valued across the IPPS
 universe. The IME hypothesis therefore cannot be tested directly.
 
-**Ownership type is tested instead** - proprietary against voluntary non-profit
-against government, after case-mix adjustment. Ten categories with usable
-distribution, and independently interesting: whether ownership predicts cost
-after adjusting for patient mix is a live question in health policy.
+**Ownership type is tested instead**, and the result stands on its own rather
+than as a substitute. Median O/E by ownership in 2024 runs monotonically from
+government down to for-profit:
+
+| Ownership | Hospitals | Median O/E | Discharge-weighted mean |
+|---|---|---|---|
+| Tribal | 3 | 1.230 | 1.279 |
+| Government - Federal | 14 | 1.213 | 1.103 |
+| Government - State | 38 | 1.139 | 1.175 |
+| Government - Hospital District or Authority | 196 | 0.921 | 0.986 |
+| Voluntary non-profit - Other | 235 | 0.918 | 1.047 |
+| Government - Local | 129 | 0.904 | 1.098 |
+| Voluntary non-profit - Church | 197 | 0.902 | 0.949 |
+| Voluntary non-profit - Private | 1,431 | 0.894 | 0.978 |
+| Proprietary | 566 | 0.848 | 0.894 |
+| Physician | 58 | 0.754 | 0.874 |
+
+The gap between the two columns is itself informative. Government - Local has a
+median of 0.904 but a weighted mean of 1.098: its large hospitals cost far more
+than its typical one. Proprietary barely moves (0.848 to 0.894), so for-profit
+hospitals are more uniform in cost regardless of size.
+
+**This is descriptive, not causal.** Physician-owned hospitals are typically
+small specialty facilities with narrow elective case mixes, and DRG-level
+adjustment does not capture within-DRG severity. The defensible claim is that
+ownership predicts residual cost after case-mix adjustment, with the government
+premium concentrated in large safety-net systems where DSH and uncompensated
+care payments land - not that for-profit hospitals are more efficient.
+
+The nine highest-O/E hospitals in 2024 are all major public safety-net systems:
+Harris Health (Houston), Parkland (Dallas), John H. Stroger and Provident (Cook
+County), four NYC Health + Hospitals facilities, and Rancho Los Amigos (LA
+County). That is the DSH and uncompensated care residual appearing exactly where
+this section predicted it would.
 
 > Future work - adding the CMS IPPS Impact File would supply teaching status and
 > resident-to-bed ratio, allowing the IME contribution to be isolated.
@@ -159,11 +245,12 @@ provider-level discharges; the rest sit in suppressed low-volume cells. Payment
 impact is small (1.3% low), but a hospital's measured case mix is not exactly its
 practised case mix.
 
-**Low-coverage hospitals excluded.** 157 hospitals below 25% coverage are dropped
-because their estimates are unreliable. Payment ratio standard deviation of
-0.371 against 0.034 in the top coverage band. These are disproportionately small
-facilities, so conclusions apply to mid-size and large hospitals more strongly
-than to the smallest.
+**Low-coverage hospitals excluded.** 157 hospitals below 25% coverage will be
+excluded at the measure layer, not in the model: `dim_hospital` holds all 3,063
+so the exclusion stays visible and adjustable. Their estimates are unreliable. 
+Payment ratio standard deviation of 0.371 against 0.034 in the top coverage band. 
+These are disproportionately small facilities, so conclusions apply to mid-size 
+and large hospitals more strongly than to the smallest.
 
 **Cost-sharing variation.** Total payment includes beneficiary coinsurance and
 deductible, which vary with supplemental coverage rather than with the hospital.

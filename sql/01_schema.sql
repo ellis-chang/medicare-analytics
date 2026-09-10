@@ -1,9 +1,12 @@
 /*
+   01_schema.sql
    Staging tables mirroring the four CMS source files.
    No transformation beyond type coercion; star schema is built in 03/04.
    Payment averages use NUMERIC(14,6): these are per-discharge averages that get
    multiplied back by discharge counts, so precision is preserved until presentation.
    hospital_type omitted from HGI: single-valued across all matched hospitals.
+   Provider-level payment columns are nullable: two 2022 hospitals at the
+   11-discharge suppression threshold have payment amounts withheld.
 */
 
 DROP TABLE IF EXISTS staging.inpatient_provider_service;
