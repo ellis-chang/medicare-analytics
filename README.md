@@ -129,7 +129,7 @@ Cleaning, dimensional modelling, and the national benchmark are computed in SQL.
 The semantic layer stays thin: Power Query handles types and naming only, and all
 analytical logic lives in DAX measures that respond to user filtering.
 
-![Star schema](screenshots/06-model.png)
+![Star schema](screenshots/06-model-view.png)
 
 **Star schema.** Three dimensions (`dim_hospital`, `dim_drg`, `dim_year`), two
 fact tables (`fact_hospital_drg` at 438,048 rows, `fact_hospital_quality` at
